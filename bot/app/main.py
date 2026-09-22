@@ -12,9 +12,9 @@ import sys
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from . import handlers
 from .api import AmneziaClient
 from .config import load_config
+from .handlers.commands import router as commands_router
 from .logging_setup import bot_logger, configure_logging, normalize_level
 from .middleware import AccessMiddleware
 
@@ -41,7 +41,7 @@ async def main() -> None:
     dp.message.outer_middleware(AccessMiddleware(config))
     dp.callback_query.outer_middleware(AccessMiddleware(config))
 
-    dp.include_router(handlers.commands.router)
+    dp.include_router(commands_router)
 
     dp["amnezia"] = api
 
