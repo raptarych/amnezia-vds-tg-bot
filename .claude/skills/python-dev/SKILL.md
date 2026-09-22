@@ -109,3 +109,37 @@ the bot.
 | `/list` | — | Renders a Markdown table of key statistics |
 | `/restart` | — | Restarts the Amnezia server |
 | `/cancel` | — | Cancels the current FSM action |
+
+## 6. Hand-off: API operation checklist
+
+When handing off API work (after writing/editing code in `api/`), always run:
+
+1. **Run the API tests** (from the `api/` directory):
+
+   ```bash
+   # activate the existing venv, then:
+   .venv/bin/python -m pytest tests -q
+   ```
+
+2. **Run lint** (optional but recommended before committing):
+
+   ```bash
+   .venv/bin/python -m ruff check app tests
+   ```
+
+3. **Regenerate the OpenAPI documentation** (writes `api/openapi.json`):
+
+   ```bash
+   .venv/bin/python gen_openapi.py
+   ```
+
+   After regenerating the spec, also rebuild the bot client (only if endpoints
+   changed):
+
+   ```bash
+   openapi-python-client generate --meta none \
+     --path api/openapi.json --output-path bot/client
+   ```
+
+Hand-off rule: the API change is only considered "done" once the tests pass,
+lint is clean, and `api/openapi.json` is up to date.
