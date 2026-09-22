@@ -12,7 +12,13 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import BufferedInputFile, CallbackQuery, Message
+from aiogram.types import (
+    BufferedInputFile,
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 
 from ..api import AmneziaClient, ApiError
 
@@ -22,6 +28,7 @@ HELP_TEXT = (
     "Управление Amnezia VPN\n\n"
     "/generate - создать новый ключ\n"
     "/get - получить существующий ключ\n"
+    "/delete - удалить ключ\n"
     "/list - список ключей и статистика\n"
     "/restart - перезапустить сервис\n"
     "/cancel - отменить текущее действие"
@@ -36,6 +43,12 @@ class GenerateState(StatesGroup):
 
 class GetState(StatesGroup):
     """FSM states used to collect a key name for download."""
+
+    waiting_for_name = State()
+
+
+class DeleteState(StatesGroup):
+    """FSM states used to collect a key name for deletion."""
 
     waiting_for_name = State()
 
@@ -144,6 +157,67 @@ async def get_name(
         return
     await state.clear()
     await send_key_files(amnezia, message, name)
+
+
+# ---------------------------------------------------------------------------
+# Delete a key
+# ---------------------------------------------------------------------------
+
+@router.message(Command("delete"))
+async def delete_start(message: Message, state: FSMContext) -> None:
+    await state.set_state(DeleteState.waiting_for_name)
+    await message.answer("Введите имя ключа, который нужно удалить:")
+
+
+@router.message(DeleteState.waiting_for_name, F.text)
+async def delete_confirm(
+    message: Message, state: FSMContext, amnezia: AmneziaClient
+) -> None:
+    name = _format_key_name(message.text or "")
+    if not name:
+        await message.answer("Имя не может быть пустым. Попробуйте ещё раз:")
+        return
+
+    stats = None
+    try:
+        stats = await amnezia.list_keys()
+    except ApiError:
+        pass
+
+    exists = bool(stats and any(p.name == name for p in stats.peers))
+    await state.clear()
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Да, удалить", callback_data=f"confirm_delete:{name}"),
+                InlineKeyboardButton(text="Отмена", callback_data="cancel_delete"),
+            ]
+        ]
+    )
+    hint = "" if exists else " (ключ с таким именем не найден в списке)"
+    await message.answer(
+        f"Точно удалить ключ `{name}`?{hint}", reply_markup=keyboard
+    )
+
+
+@router.callback_query(F.data.startswith("confirm_delete:"))
+async def do_delete(callback: CallbackQuery, amnezia: AmneziaClient) -> None:
+    name = callback.data.split(":", 1)[1]
+    await callback.answer()
+    status_msg = await callback.message.answer(f"Удаляю ключ `{name}`...")
+    try:
+        await amnezia.delete_key(name)
+    except ApiError as exc:
+        await status_msg.edit_text(f"Ошибка при удалении ключа: {exc}")
+        return
+    await status_msg.edit_text(f"Ключ `{name}` удалён.")
+
+
+@router.callback_query(F.data == "cancel_delete")
+async def cancel_delete(callback: CallbackQuery) -> None:
+    await callback.answer("Отменено.")
+    await callback.message.answer("Удаление отменено.")
 
 
 # ---------------------------------------------------------------------------

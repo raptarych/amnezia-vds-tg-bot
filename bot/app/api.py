@@ -12,6 +12,7 @@ from app import config as config_module
 from app.logging_setup import api_logger
 from client import Client
 from client.api.keys import (
+    delete_key_keys_key_name_delete,
     generate_key_keys_post,
     list_keys_keys_get,
 )
@@ -94,6 +95,15 @@ class AmneziaClient:
         if detail.status_code != 200:
             raise ApiError(f"Failed to restart server: {detail.status_code}")
         api_logger.info("API call succeeded: restart server")
+
+    async def delete_key(self, name: str) -> None:
+        """Delete a key via the API."""
+        api_logger.info("API call: delete key name=%s", name)
+        result = await delete_key_keys_key_name_delete.asyncio(
+            client=self._client, key_name=name, x_api_secret=self._secret
+        )
+        self._raise_for_result(result, action="delete key")
+        api_logger.info("API call succeeded: delete key name=%s", name)
 
     @staticmethod
     def _raise_for_result(result, action: str) -> None:

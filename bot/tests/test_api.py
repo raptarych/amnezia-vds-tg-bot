@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.api import AmneziaClient, ApiError
-from client.models import KeyGenerated, PeerStats, StatsResponse, Totals
+from client.models import KeyDeleted, KeyGenerated, PeerStats, StatsResponse, Totals
 
 
 @dataclass
@@ -56,6 +56,21 @@ async def test_download_key_non_ok_raises() -> None:
     client = _client_with_httpx(FakeResponse(status_code=404, content=b""))
     with pytest.raises(ApiError):
         await client.download_key("phone", "conf")
+
+
+@pytest.mark.asyncio
+async def test_delete_key_success() -> None:
+    client = AmneziaClient("http://x", "secret")
+    deleted = KeyDeleted(name="phone", message="ok")
+    with patch(
+        "app.api.delete_key_keys_key_name_delete.asyncio",
+        new=AsyncMock(return_value=deleted),
+    ) as mock:
+        await client.delete_key("phone")
+        mock.assert_awaited_once()
+        _, kwargs = mock.call_args
+        assert kwargs["key_name"] == "phone"
+        assert kwargs["x_api_secret"] == "secret"
 
 
 @pytest.mark.asyncio

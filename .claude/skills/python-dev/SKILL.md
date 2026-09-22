@@ -106,6 +106,7 @@ the bot.
 | `/start`, `/help` | — | Shows help text |
 | `/generate` | key name | Generates key, returns `.conf` + `.png` files |
 | `/get` | key name | Returns `.conf` + `.png` files for an existing key |
+| `/delete` | key name | Deletes a key (with inline confirmation) |
 | `/list` | — | Renders a Markdown table of key statistics |
 | `/restart` | — | Restarts the Amnezia server |
 | `/cancel` | — | Cancels the current FSM action |
