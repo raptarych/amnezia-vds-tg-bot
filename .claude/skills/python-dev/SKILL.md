@@ -52,3 +52,60 @@ When the user asks to write, edit, or refactor Python code:
 2. Formulate a quick outline of types and data models using Pydantic or `@dataclass`.
 3. Generate the required implementation keeping dependencies minimal.
 4. If testing hooks exist, proactively write matching test footprints.
+
+## 5. Project Reference: amnezia-vds-tg-bot
+
+This repository contains two applications for managing Amnezia VPN on an
+Ubuntu 24 host:
+
+- `api/` — a FastAPI HTTP API that shells out to the AmneziaWireGuard
+  management script `/root/awg/manage_amneziawg.sh`.
+- `bot/` — an aiogram (long-polling) Telegram bot that consumes the API via a
+  client generated from `api/openapi.json` with `openapi-python-client`.
+
+### HTTP API
+
+All endpoints require the `X-API-Secret` header. The reference secret is stored
+in `/etc/amnezia-vds/api_secret` (auto-created on first boot unless a bootstrap
+secret is supplied). Server management script and AWG directory are configurable
+via the `AMNEZIA_API_*` environment variables.
+
+| Method | Path | Purpose | Request | Response |
+|--------|------|---------|---------|----------|
+| `POST` | `/keys?name=<name>` | Generate a key (`add <name>`) | `name` query param | `201` `{name, message}` |
+| `GET` | `/keys/{key}?ext=conf\|png\|vpnuri` | Download a key file | key name, file extension | File bytes (`.conf`/`.png`/`.vpnuri`) |
+| `DELETE` | `/keys/{key}` | Remove a key (`remove <name>`) | key name | `200` `{name, message}` |
+| `GET` | `/keys` | List keys with stats (`stats`) | — | `{peers: [...], totals: {...}}` |
+| `POST` | `/server/check` | Health check (`check`) | — | empty `200` or error DTO |
+| `POST` | `/server/restart` | Restart service (`restart`) | — | empty `200` or error DTO |
+
+Key names must not contain path separators / traversal sequences; only
+`.conf`, `.png`, `.vpnuri` files are served and only from the AWG directory.
+
+The `stats` output is parsed into peer DTOs with fields:
+`name, ip, received, sent, last_handshake, status`. See
+`api/app/schemas.py` and `api/tests/test_api.py`.
+
+Regenerate the spec with `api/.venv/bin/python gen_openapi.py` (writes
+`api/openapi.json`). Regenerate the bot client after spec changes:
+
+```bash
+openapi-python-client generate --meta none \
+  --path api/openapi.json --output-path bot/client
+```
+
+### Telegram bot
+
+Host config lives in `/etc/amnezia-vds/bot.yml` (fields: `telegram_bot_token`,
+`http_api_url`, `http_api_secret`, `allowed_usernames`). If missing, a
+placeholder file is created at startup. Only listed Telegram usernames can use
+the bot.
+
+| Command | Input | Behaviour |
+|---------|-------|-----------|
+| `/start`, `/help` | — | Shows help text |
+| `/generate` | key name | Generates key, returns `.conf` + `.png` files |
+| `/get` | key name | Returns `.conf` + `.png` files for an existing key |
+| `/list` | — | Renders a Markdown table of key statistics |
+| `/restart` | — | Restarts the Amnezia server |
+| `/cancel` | — | Cancels the current FSM action |

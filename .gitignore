@@ -217,3 +217,8 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 secret_*
+
+# Local Python environments for the API and the bot
+/api/.venv/
+/bot/.venv/
+

@@ -1,0 +1,528 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Amnezia VPN Management API",
+    "description": "HTTP API to manage Amnezia VPN on a host: generate/download/delete keys and check/restart the server. All requests require an X-API-Secret header.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/keys": {
+      "post": {
+        "tags": [
+          "keys"
+        ],
+        "summary": "Generate a new key",
+        "description": "Runs the management script 'add' command to create a key.",
+        "operationId": "generate_key_keys_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Name of the key to generate.",
+              "title": "Name"
+            },
+            "description": "Name of the key to generate."
+          },
+          {
+            "name": "X-API-Secret",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Api-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyGenerated"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "keys"
+        ],
+        "summary": "List keys with statistics",
+        "description": "Runs the management script 'stats' command and returns peer statistics as a structured model.",
+        "operationId": "list_keys_keys_get",
+        "parameters": [
+          {
+            "name": "X-API-Secret",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Api-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/keys/{key_name}": {
+      "get": {
+        "tags": [
+          "keys"
+        ],
+        "summary": "Download a key file",
+        "description": "Returns the content of a key file. Supported extensions: .conf, .png, .vpnuri.",
+        "operationId": "get_key_keys__key_name__get",
+        "parameters": [
+          {
+            "name": "key_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Name"
+            }
+          },
+          {
+            "name": "ext",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "File extension: conf, png or vpnuri.",
+              "default": "conf",
+              "title": "Ext"
+            },
+            "description": "File extension: conf, png or vpnuri."
+          },
+          {
+            "name": "X-API-Secret",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Api-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "keys"
+        ],
+        "summary": "Delete a key",
+        "description": "Runs the management script 'remove' command.",
+        "operationId": "delete_key_keys__key_name__delete",
+        "parameters": [
+          {
+            "name": "key_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Name"
+            }
+          },
+          {
+            "name": "X-API-Secret",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Api-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyDeleted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/server/check": {
+      "post": {
+        "tags": [
+          "server"
+        ],
+        "summary": "Run service health check",
+        "description": "Runs the management script 'check' command. Returns an empty 200 on success, otherwise an error DTO.",
+        "operationId": "server_check_server_check_post",
+        "parameters": [
+          {
+            "name": "X-API-Secret",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Api-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/server/restart": {
+      "post": {
+        "tags": [
+          "server"
+        ],
+        "summary": "Restart the service",
+        "description": "Runs the management script 'restart' command. Returns an empty 200 on success, otherwise an error DTO.",
+        "operationId": "server_restart_server_restart_post",
+        "parameters": [
+          {
+            "name": "X-API-Secret",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Api-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ErrorResponse": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "Human-readable error description."
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorResponse",
+        "description": "Uniform error body returned for failed operations."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "KeyDeleted": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Name of the deleted key."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable confirmation message."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "message"
+        ],
+        "title": "KeyDeleted",
+        "description": "Response returned after successfully deleting a key."
+      },
+      "KeyGenerated": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Name of the generated key."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable confirmation message."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "message"
+        ],
+        "title": "KeyGenerated",
+        "description": "Response returned after successfully generating a new key."
+      },
+      "PeerStats": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Key/peer name."
+          },
+          "ip": {
+            "type": "string",
+            "title": "Ip",
+            "description": "Peer IP address inside the tunnel."
+          },
+          "received": {
+            "type": "string",
+            "title": "Received",
+            "description": "Amount of data received, human-readable."
+          },
+          "sent": {
+            "type": "string",
+            "title": "Sent",
+            "description": "Amount of data sent, human-readable."
+          },
+          "last_handshake": {
+            "type": "string",
+            "title": "Last Handshake",
+            "description": "Date/time of the last handshake or 'never'."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Peer activity status, e.g. Active/Inactive."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "ip",
+          "received",
+          "sent",
+          "last_handshake",
+          "status"
+        ],
+        "title": "PeerStats",
+        "description": "Statistics for a single AmneziaWireGuard peer (key)."
+      },
+      "StatsResponse": {
+        "properties": {
+          "peers": {
+            "items": {
+              "$ref": "#/components/schemas/PeerStats"
+            },
+            "type": "array",
+            "title": "Peers",
+            "description": "Per-peer statistics."
+          },
+          "totals": {
+            "$ref": "#/components/schemas/Totals",
+            "description": "Aggregated totals."
+          }
+        },
+        "type": "object",
+        "required": [
+          "peers",
+          "totals"
+        ],
+        "title": "StatsResponse",
+        "description": "Response of the key list (stats) endpoint."
+      },
+      "Totals": {
+        "properties": {
+          "received": {
+            "type": "string",
+            "title": "Received",
+            "description": "Total data received by all peers."
+          },
+          "sent": {
+            "type": "string",
+            "title": "Sent",
+            "description": "Total data sent by all peers."
+          }
+        },
+        "type": "object",
+        "required": [
+          "received",
+          "sent"
+        ],
+        "title": "Totals",
+        "description": "Aggregated traffic totals across all peers."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}
