@@ -4,3 +4,6 @@ http_api_secret: YOUR_API_SECRET_HERE
 allowed_usernames:
   - username1
   - username2
+logging:
+  level: INFO
+  file: /var/log/amnezia-vds-bot.log

@@ -24,6 +24,10 @@ TEMPLATE = {
         "username1",
         "username2",
     ],
+    "logging": {
+        "level": "INFO",
+        "file": "",
+    },
 }
 
 
@@ -51,6 +55,22 @@ class BotConfig:
         if isinstance(raw, str):
             raw = [raw]
         return {str(item).lstrip("@") for item in raw if item}
+
+    @property
+    def log_level(self) -> str:
+        """Return the configured logging level (env override wins)."""
+        return str(
+            os.environ.get("AMNEZIA_BOT_LOG_LEVEL")
+            or self.data.get("logging", {}).get("level", "INFO")
+        )
+
+    @property
+    def log_file(self) -> str:
+        """Return the configured log file path (env override wins)."""
+        return str(
+            os.environ.get("AMNEZIA_BOT_LOG_FILE")
+            or self.data.get("logging", {}).get("file", "")
+        )
 
     def is_user_allowed(self, username: str | None) -> bool:
         """Return ``True`` if a Telegram username is authorised to use the bot."""

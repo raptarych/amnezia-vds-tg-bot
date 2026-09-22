@@ -53,12 +53,14 @@ async def test_download_key_returns_content() -> None:
 async def test_download_key_non_ok_raises() -> None:
     client = AmneziaClient("http://x", "secret")
     detail = FakeDetailResponse(status_code=HTTPStatus.NOT_FOUND, content=b"")
-    with patch(
-        "app.api.get_key_keys_key_name_get.asyncio_detailed",
-        new=AsyncMock(return_value=detail),
+    with (
+        patch(
+            "app.api.get_key_keys_key_name_get.asyncio_detailed",
+            new=AsyncMock(return_value=detail),
+        ),
+        pytest.raises(ApiError),
     ):
-        with pytest.raises(ApiError):
-            await client.download_key("phone", "conf")
+        await client.download_key("phone", "conf")
 
 
 @pytest.mark.asyncio

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from app.config import BotConfig, load_config
+from app.config import load_config
 
 
 def test_load_config_creates_stub(tmp_path: Path) -> None:
@@ -16,6 +16,8 @@ def test_load_config_creates_stub(tmp_path: Path) -> None:
     assert cfg.bot_token == "YOUR_BOT_TOKEN_HERE"
     assert cfg.api_secret == "YOUR_API_SECRET_HERE"
     assert cfg.api_url == "http://127.0.0.1:8123"
+    assert cfg.log_level == "INFO"
+    assert cfg.log_file == ""
 
 
 def test_load_config_requires_existing_file(tmp_path: Path) -> None:
@@ -27,16 +29,14 @@ def test_load_config_requires_existing_file(tmp_path: Path) -> None:
 def test_load_config_parses_values(tmp_path: Path) -> None:
     path = tmp_path / "bot.yml"
     path.write_text(
-        "\n".join(
-            [
-                "telegram_bot_token: real-token",
-                "http_api_url: http://example.com:9000",
-                "http_api_secret: s3cret",
-                "allowed_usernames:",
-                "  - '@alice'",
-                "  - bob",
-            ]
-        ),
+        """
+telegram_bot_token: real-token
+http_api_url: http://example.com:9000
+http_api_secret: s3cret
+allowed_usernames:
+  - '@alice'
+  - bob
+""".lstrip(),
         encoding="utf-8",
     )
     cfg = load_config(str(path))

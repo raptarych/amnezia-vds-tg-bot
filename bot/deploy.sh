@@ -56,6 +56,8 @@ ExecStart=${INSTALL_DIR}/.venv/bin/python -m app.main
 Restart=always
 RestartSec=3
 Environment="BOT_CONFIG_PATH=${CONFIG_FILE}"
+Environment="AMNEZIA_BOT_LOG_LEVEL=INFO"
+Environment="AMNEZIA_BOT_LOG_FILE=/var/log/amnezia-vds-bot.log"
 
 [Install]
 WantedBy=multi-user.target
