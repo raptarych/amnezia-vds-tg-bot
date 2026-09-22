@@ -3,6 +3,10 @@
 Every incoming update is checked against the allow-list of Telegram
 usernames. Unauthorised senders get a short notice and their update is not
 propagated to any command handler.
+
+Note: this middleware is registered on the ``dp.message`` and
+``dp.callback_query`` observers, so it receives the observed event directly
+(a :class:`Message` or :class:`CallbackQuery`), not a whole :class:`Update`.
 """
 
 from __future__ import annotations
@@ -11,7 +15,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from aiogram import BaseMiddleware
-from aiogram.types import Update
+from aiogram.types import CallbackQuery, Message
 
 from .config import BotConfig
 from .logging_setup import access_logger
@@ -25,28 +29,27 @@ class AccessMiddleware(BaseMiddleware):
 
     async def __call__(
         self,
-        handler: Callable[[Update, dict[str, Any]], Awaitable[Any]],
-        event: Update,
+        handler: Callable[[Any, dict[str, Any]], Awaitable[Any]],
+        event: Any,
         data: dict[str, Any],
     ) -> Any:
-        sender = None
-        reply_to = None
-        update_type = "?" 
-
-        if event.message is not None:
-            sender = event.message.from_user
-            reply_to = event.message
+        if isinstance(event, Message):
+            sender = event.from_user
+            reply_to = event
             update_type = "message"
-        elif event.callback_query is not None:
-            sender = event.callback_query.from_user
-            reply_to = event.callback_query.message
+        elif isinstance(event, CallbackQuery):
+            sender = event.from_user
+            reply_to = event.message
             update_type = "callback"
-
-        if sender is None:
-            access_logger.debug("Ignoring update without a sender (type=%s)", update_type)
+        else:
+            access_logger.debug("Ignoring unsupported event type: %r", type(event))
             return None
 
-        username = sender.username if sender is not None else None
+        if sender is None:
+            access_logger.debug("Ignoring %s without a sender", update_type)
+            return None
+
+        username = sender.username
         user_id = sender.id
 
         if not self._config.is_user_allowed(username):
@@ -57,7 +60,10 @@ class AccessMiddleware(BaseMiddleware):
                 update_type,
             )
             if reply_to is not None:
-                await reply_to.answer("У вас нет доступа к этому боту.")
+                if update_type == "callback":
+                    await event.answer("У вас нет доступа к этому боту.")
+                else:
+                    await reply_to.answer("У вас нет доступа к этому боту.")
             return None
 
         access_logger.info(
