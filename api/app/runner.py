@@ -16,7 +16,11 @@ from .logging_setup import runner_logger
 
 
 class ScriptError(RuntimeError):
-    """Raised when the management script finishes with a non-zero exit code."""
+    """Raised when the management script cannot be run or exits unsuccessfully.
+
+    Carries the raw stdout and stderr so callers and loggers can inspect the
+    full, untruncated output of the failed command.
+    """
 
     def __init__(self, exit_code: int, stderr: str, stdout: str = "") -> None:
         self.exit_code = exit_code
@@ -41,6 +45,24 @@ class CommandResult:
         return self.exit_code == 0
 
 
+def _decode(data: bytes | None) -> str:
+    """Decode captured output bytes as UTF-8, tolerating invalid bytes."""
+    return data.decode("utf-8", errors="replace") if data else ""
+
+
+def _build_command(script: str, args: tuple[str, ...]) -> list[str]:
+    """Build the process command line, handling Windows test support."""
+    command: list[str] = [script, *args]
+    if os.name == "nt":
+        # Testing support on Windows: Python mocks run via the interpreter,
+        # anything else is treated as a bash script (e.g. Git Bash).
+        if script.endswith(".py"):
+            command = [sys.executable, *command]
+        else:
+            command = ["bash", *command]
+    return command
+
+
 def run_manage(script: str, *args: str, timeout: int = 120) -> CommandResult:
     """Invoke the management script with the given positional arguments.
 
@@ -53,18 +75,14 @@ def run_manage(script: str, *args: str, timeout: int = 120) -> CommandResult:
         A :class:`CommandResult` holding stdout/stderr and exit code.
 
     Raises:
-        ScriptError: If the script exited with a non-zero code.
+        ScriptError: If the script exited with a non-zero code, timed out, or
+            could not be launched. The exception carries the full output of the
+            failed invocation.
     """
     runner_logger.info("Executing management command: %s %s", script, " ".join(args))
+    command = _build_command(script, args)
+
     try:
-        command: list[str] = [script, *args]
-        if os.name == "nt":
-            # Testing support on Windows: Python mocks run via the interpreter,
-            # anything else is treated as a bash script (e.g. Git Bash).
-            if script.endswith(".py"):
-                command = [sys.executable, *command]
-            else:
-                command = ["bash", *command]
         proc = subprocess.run(
             command,
             capture_output=True,
@@ -73,26 +91,53 @@ def run_manage(script: str, *args: str, timeout: int = 120) -> CommandResult:
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
-        stdout = exc.stdout.decode("utf-8", errors="replace") if exc.stdout else ""
-        stderr = exc.stderr.decode("utf-8", errors="replace") if exc.stderr else ""
-        runner_logger.error(
-            "Management command timed out after %ss: %s",
-            timeout,
-            " ".join(args),
+        stdout = _decode(exc.stdout)
+        stderr = _decode(exc.stderr)
+        _log_failure(
+            status=f"timeout after {timeout}s",
+            args=args,
+            stdout=stdout,
+            stderr=stderr,
         )
         raise ScriptError(-1, stderr, stdout) from exc
+    except OSError as exc:
+        # e.g. the script file is missing or not executable.
+        runner_logger.error(
+            "Management command could not be launched (%s): %s -> %s",
+            exc,
+            script,
+            " ".join(args),
+        )
+        raise ScriptError(-1, str(exc)) from exc
+    except subprocess.SubprocessError as exc:
+        runner_logger.error(
+            "Management command failed to run (%r): %s", exc, " ".join(args)
+        )
+        raise ScriptError(-1, str(exc)) from exc
 
-    stdout = proc.stdout.decode("utf-8", errors="replace")
-    stderr = proc.stderr.decode("utf-8", errors="replace")
+    stdout = _decode(proc.stdout)
+    stderr = _decode(proc.stderr)
 
     if proc.returncode != 0:
-        runner_logger.error(
-            "Management command failed (exit=%s): %s stderr=%r",
-            proc.returncode,
-            " ".join(args),
-            stderr[-500:],
+        _log_failure(
+            status=f"exit={proc.returncode}",
+            args=args,
+            stdout=stdout,
+            stderr=stderr,
         )
         raise ScriptError(proc.returncode, stderr, stdout)
 
     runner_logger.info("Management command succeeded: %s", " ".join(args))
     return CommandResult(proc.returncode, stdout, stderr)
+
+
+def _log_failure(status: str, args: tuple[str, ...], stdout: str, stderr: str) -> None:
+    """Log the full, untruncated output of a failed management command."""
+    runner_logger.error(
+        "Management command failed (%s), args=%s\n--- stdout ---\n%s\n"
+        "--- stderr ---\n%s\n--- end ---",
+        status,
+        " ".join(args),
+        stdout or "<empty>",
+        stderr or "<empty>",
+    )

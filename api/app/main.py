@@ -70,21 +70,23 @@ async def request_logging_middleware(request: Request, call_next):
     secret_header = request.headers.get("X-API-Secret")
     auth_present = bool(secret_header)
     start = time.perf_counter()
-
-    response = await call_next(request)
-
-    duration_ms = (time.perf_counter() - start) * 1000
-    access_logger = logging.getLogger("amnezia.access")
-    access_logger.info(
-        "method=%s path=%s status=%s duration_ms=%.1f auth=%s client=%s",
-        request.method,
-        request.url.path,
-        response.status_code,
-        duration_ms,
-        auth_present,
-        request.client.host if request.client else "-",
-    )
-    return response
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    finally:
+        duration_ms = (time.perf_counter() - start) * 1000
+        access_logger = logging.getLogger("amnezia.access")
+        access_logger.info(
+            "method=%s path=%s status=%s duration_ms=%.1f auth=%s client=%s",
+            request.method,
+            request.url.path,
+            status_code,
+            duration_ms,
+            auth_present,
+            request.client.host if request.client else "-",
+        )
 
 
 @app.get("/health", tags=["system"], include_in_schema=False)
@@ -97,6 +99,22 @@ def health() -> Response:
 def not_found_handler(_request, _exc):
     """Return a JSON body for missing endpoints."""
     return JSONResponse(status_code=404, content={"detail": "Not found."})
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Log any uncaught exception with its full traceback and return ``500``.
+
+    Without this handler, FastAPI/Starlette swallows unhandled exceptions and
+    the only trace surfaces in the logs is an empty ``500`` with no detail.
+    """
+    api_logger.exception(
+        "Unhandled exception while processing %s %s",
+        request.method,
+        request.url.path,
+        exc_info=exc,
+    )
+    return JSONResponse(status_code=500, content={"detail": "Internal server error."})
 
 
 app.include_router(keys.router)

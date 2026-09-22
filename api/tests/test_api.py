@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from pathlib import Path
 
 import pytest
@@ -120,3 +122,37 @@ def test_openapi_schema(client: TestClient) -> None:
     spec = client.get("/openapi.json").json()
     assert "/keys" in spec["paths"]
     assert "/server/check" in spec["paths"]
+
+
+def test_unhandled_exception_returns_500_and_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A non-ScriptError exception must yield a logged 500, not silence."""
+    from starlette.requests import Request
+
+    from app.main import unhandled_exception_handler
+
+    request = Request(
+        {
+            "type": "http",
+            "asgi": {"version": "3.0", "spec_version": "2.3"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/boom",
+            "raw_path": b"/boom",
+            "root_path": "",
+            "query_string": b"",
+            "headers": [],
+            "client": ("127.0.0.1", 1234),
+            "server": ("testserver", 80),
+        }
+    )
+
+    with caplog.at_level(logging.ERROR, logger="amnezia.api"):
+        response = asyncio.run(
+            unhandled_exception_handler(request, RuntimeError("kaboom-detail"))
+        )
+
+    assert response.status_code == 500
+    assert "kaboom-detail" in caplog.text
