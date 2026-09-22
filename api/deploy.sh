@@ -83,18 +83,48 @@ systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}"
 systemctl restart "${SERVICE_NAME}"
 
+echo "==> Opening port ${PORT} in the firewall (UFW)"
+if command -v ufw > /dev/null 2>&1; then
+  if ufw status verbose | grep -q "Status: active"; then
+    ufw allow "${PORT}/tcp" > /dev/null
+    echo "UFW rule added for TCP/${PORT}"
+  else
+    echo "UFW is inactive; no rule changes needed"
+  fi
+else
+  echo "ufw not installed; skipping firewall configuration"
+fi
+
 echo "==> Waiting for API to become reachable"
 HOST_IP="$(hostname -I | awk '{print $1}')"
 URL="http://${HOST_IP}:${PORT}/health"
 for i in $(seq 1 30); do
   if curl -fsS "${URL}" > /dev/null 2>&1; then
-    echo "API is reachable at ${URL}"
-    systemctl status "${SERVICE_NAME}" --no-pager || true
-    exit 0
+    echo "API is reachable locally at ${URL}"
+    break
+  fi
+  if [ "${i}" -eq 30 ]; then
+    echo "ERROR: API did not become reachable at ${URL}" >&2
+    journalctl -u "${SERVICE_NAME}" -n 40 --no-pager >&2 || true
+    exit 1
   fi
   sleep 1
 done
 
-echo "ERROR: API did not become reachable at ${URL}" >&2
-journalctl -u "${SERVICE_NAME}" -n 40 --no-pager >&2 || true
-exit 1
+echo "==> Verifying external reachability via public IP"
+if command -v curl > /dev/null 2>&1; then
+  if PUBLIC_IP="$(curl -fsS --max-time 20 ifconfig.me 2>/dev/null)"; then
+    EXTERNAL_URL="http://${PUBLIC_IP}:${PORT}/health"
+    if curl -fsS --max-time 20 "${EXTERNAL_URL}" > /dev/null 2>&1; then
+      echo "API is reachable from outside at ${EXTERNAL_URL}"
+    else
+      echo "WARNING: local API works, but external check against ${EXTERNAL_URL} failed" >&2
+      echo "Check UFW rules and that the public IP ${PUBLIC_IP} actually points to this host." >&2
+    fi
+  else
+    echo "WARNING: could not determine public IP via ifconfig.me" >&2
+  fi
+fi
+
+systemctl status "${SERVICE_NAME}" --no-pager || true
+exit 0
