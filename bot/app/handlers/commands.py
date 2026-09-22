@@ -1,8 +1,8 @@
 """Telegram bot command handlers.
 
-Implements a small set of textual commands backed by an FSM to collect a key
-name where required. All interactions are guarded by an allow-list based
-filter so that only configured Telegram usernames can use the bot.
+Implements commands and a persistent inline "menu" keyboard. Flows that need a
+key name (generate / get / delete) ask for it as plain text after the button is
+pressed. All interactions are guarded by an allow-list based filter.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
+from prettytable import PrettyTable
 
 from ..api import AmneziaClient, ApiError
 
@@ -26,6 +27,7 @@ router = Router()
 
 HELP_TEXT = (
     "Управление Amnezia VPN\n\n"
+    "/menu - открыть меню\n"
     "/generate - создать новый ключ\n"
     "/get - получить существующий ключ\n"
     "/delete - удалить ключ\n"
@@ -33,6 +35,8 @@ HELP_TEXT = (
     "/restart - перезапустить сервис\n"
     "/cancel - отменить текущее действие"
 )
+
+MENU_TEXT = "Выберите действие:"
 
 
 class GenerateState(StatesGroup):
@@ -53,17 +57,48 @@ class DeleteState(StatesGroup):
     waiting_for_name = State()
 
 
+def main_menu() -> InlineKeyboardMarkup:
+    """Return the main inline keyboard with all actions."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🗝 Создать ключ", callback_data="menu:generate"
+                ),
+                InlineKeyboardButton(text="📥 Получить ключ", callback_data="menu:get"),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🗑 Удалить ключ", callback_data="menu:delete"
+                ),
+                InlineKeyboardButton(text="📋 Список ключей", callback_data="menu:list"),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔄 Перезапустить", callback_data="menu:restart"
+                )
+            ],
+        ]
+    )
+
+
 def _format_key_name(text: str) -> str:
     return text.strip()
 
 
 # ---------------------------------------------------------------------------
-# General commands
+# General commands / menu
 # ---------------------------------------------------------------------------
 
 @router.message(CommandStart())
 async def on_start(message: Message) -> None:
     await message.answer(HELP_TEXT)
+    await message.answer(MENU_TEXT, reply_markup=main_menu())
+
+
+@router.message(Command("menu"))
+async def on_menu(message: Message) -> None:
+    await message.answer(MENU_TEXT, reply_markup=main_menu())
 
 
 @router.message(Command("help"))
@@ -79,6 +114,57 @@ async def on_cancel(message: Message, state: FSMContext) -> None:
         return
     await state.clear()
     await message.answer("Действие отменено.")
+
+
+# ---------------------------------------------------------------------------
+# Inline menu actions
+# ---------------------------------------------------------------------------
+
+@router.callback_query(F.data == "menu:generate")
+async def menu_generate(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await state.set_state(GenerateState.waiting_for_name)
+    await callback.message.answer("Введите имя нового ключа:")
+
+
+@router.callback_query(F.data == "menu:get")
+async def menu_get(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await state.set_state(GetState.waiting_for_name)
+    await callback.message.answer("Введите имя ключа, который нужно скачать:")
+
+
+@router.callback_query(F.data == "menu:delete")
+async def menu_delete(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await state.set_state(DeleteState.waiting_for_name)
+    await callback.message.answer("Введите имя ключа, который нужно удалить:")
+
+
+@router.callback_query(F.data == "menu:list")
+async def menu_list(callback: CallbackQuery, amnezia: AmneziaClient) -> None:
+    await callback.answer()
+    await send_list(callback.message, amnezia)
+
+
+@router.callback_query(F.data == "menu:restart")
+async def menu_restart(callback: CallbackQuery) -> None:
+    await callback.answer()
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Да, перезапустить", callback_data="confirm_restart"
+                ),
+                InlineKeyboardButton(
+                    text="Отмена", callback_data="cancel_restart"
+                ),
+            ]
+        ]
+    )
+    await callback.message.answer(
+        "Точно перезапустить сервис?", reply_markup=keyboard
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -225,9 +311,34 @@ async def cancel_delete(callback: CallbackQuery) -> None:
 # ---------------------------------------------------------------------------
 
 @router.message(Command("list"))
-async def list_keys(
-    message: Message, amnezia: AmneziaClient
-) -> None:
+async def list_keys_command(message: Message, amnezia: AmneziaClient) -> None:
+    await send_list(message, amnezia)
+
+
+def _render_stats_table(stats) -> str:
+    """Render the key statistics as a bordered PrettyTable block."""
+    table = PrettyTable()
+    table.field_names = ["Имя", "IP", "Получено", "Отправлено", "Последний handshake", "Статус"]
+    table.align["Имя"] = "l"
+    table.align["IP"] = "l"
+    for peer in stats.peers:
+        table.add_row(
+            [
+                peer.name,
+                peer.ip,
+                peer.received,
+                peer.sent,
+                peer.last_handshake,
+                peer.status,
+            ]
+        )
+    table.max_width["Имя"] = 24
+    table.max_width["Последний handshake"] = 24
+    return table.get_string()
+
+
+async def send_list(message: Message, amnezia: AmneziaClient) -> None:
+    """Fetch stats and send a PrettyTable-formatted list to the user."""
     try:
         stats = await amnezia.list_keys()
     except ApiError as exc:
@@ -235,23 +346,16 @@ async def list_keys(
         return
 
     if not stats.peers:
-        await message.answer("Ключи не найдены.")
+        await message.answer("Ключи не найдены.", reply_markup=main_menu())
         return
 
-    rows = [
-        (
-            "Имя          | IP              | Получено | Отправлено | "
-            "Последний handshake | Статус"
-        ),
-        "---",
-    ]
-    for peer in stats.peers:
-        rows.append(
-            f"{peer.name} | {peer.ip} | {peer.received} | {peer.sent} | "
-            f"{peer.last_handshake} | {peer.status}"
-        )
-    table = "\n".join(rows)
-    await message.answer(f"<pre>{table}</pre>", parse_mode="HTML")
+    table = _render_stats_table(stats)
+    totals = (
+        f"Итого: Получено {stats.totals.received} · Отправлено {stats.totals.sent}"
+    )
+    await message.answer(
+        f"<pre>{table}</pre>\n\n{totals}", parse_mode="HTML", reply_markup=main_menu()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -260,7 +364,25 @@ async def list_keys(
 
 @router.message(Command("restart"))
 async def restart_service(message: Message, amnezia: AmneziaClient) -> None:
-    status_msg = await message.answer("Перезапускаю сервис...")
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Да, перезапустить", callback_data="confirm_restart"
+                ),
+                InlineKeyboardButton(text="Отмена", callback_data="cancel_restart"),
+            ]
+        ]
+    )
+    await message.answer("Точно перезапустить сервис?", reply_markup=keyboard)
+
+
+@router.callback_query(F.data == "confirm_restart")
+async def confirm_restart(
+    callback: CallbackQuery, amnezia: AmneziaClient
+) -> None:
+    await callback.answer()
+    status_msg = await callback.message.answer("Перезапускаю сервис...")
     try:
         await amnezia.restart_server()
     except ApiError as exc:
@@ -269,22 +391,10 @@ async def restart_service(message: Message, amnezia: AmneziaClient) -> None:
     await status_msg.edit_text("Сервис перезапущен.")
 
 
-# ---------------------------------------------------------------------------
-# Telegram callback: confirm restart
-# ---------------------------------------------------------------------------
-
-@router.callback_query(F.data == "confirm_restart")
-async def confirm_restart(
-    callback: CallbackQuery, amnezia: AmneziaClient
-) -> None:
-    await callback.answer()
-    await callback.message.answer("Перезапускаю сервис...")
-    try:
-        await amnezia.restart_server()
-    except ApiError as exc:
-        await callback.message.answer(f"Ошибка перезапуска сервиса: {exc}")
-        return
-    await callback.message.answer("Сервис перезапущен.")
+@router.callback_query(F.data == "cancel_restart")
+async def cancel_restart(callback: CallbackQuery) -> None:
+    await callback.answer("Отменено.")
+    await callback.message.answer("Перезапуск отменён.")
 
 
 # ---------------------------------------------------------------------------
@@ -293,4 +403,4 @@ async def confirm_restart(
 
 @router.message(F.text, StateFilter(None))
 async def unknown_message(message: Message) -> None:
-    await message.answer("Неизвестная команда. Наберите /help.")
+    await message.answer("Неизвестная команда. Наберите /menu или /help.")

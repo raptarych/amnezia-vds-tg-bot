@@ -88,8 +88,13 @@ sudo tail -f /var/log/amnezia-vds-api.log
 заглушками при первом запуске. В нём нужно указать токен бота, адрес API,
 секрет API и список разрешённых Telegram-никомов.
 
-Команды бота: `/generate`, `/get`, `/delete`, `/list`, `/restart`, `/help`,
-`/cancel`. Подробности в `.claude/skills/python-dev/SKILL.md`.
+Команды бота: `/menu`, `/generate`, `/get`, `/delete`, `/list`,
+`/restart`, `/help`, `/cancel`. Подробности в
+`.claude/skills/python-dev/SKILL.md`.
+
+Управление доступно и как команды, и через **inline-меню** (кнопка `/menu`):
+Создать / Получить / Удалить ключ, Список ключей, Перезапустить. Список
+ключей выводится красивой таблицей (библиотека `PrettyTable`).
 
 ### Деплой бота
 

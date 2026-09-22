@@ -103,13 +103,17 @@ the bot.
 
 | Command | Input | Behaviour |
 |---------|-------|-----------|
-| `/start`, `/help` | — | Shows help text |
+| `/start`, `/menu` | — | Shows help text and the inline action menu |
+| `/help` | — | Shows help text |
 | `/generate` | key name | Generates key, returns `.conf` + `.png` files |
 | `/get` | key name | Returns `.conf` + `.png` files for an existing key |
 | `/delete` | key name | Deletes a key (with inline confirmation) |
-| `/list` | — | Renders a Markdown table of key statistics |
-| `/restart` | — | Restarts the Amnezia server |
+| `/list` | — | Renders a bordered PrettyTable of key statistics + totals |
+| `/restart` | — | Restarts the Amnezia server (with inline confirmation) |
 | `/cancel` | — | Cancels the current FSM action |
+
+All actions are also reachable through the inline menu (`menu:generate`,
+`menu:get`, `menu:delete`, `menu:list`, `menu:restart`).
 
 ## 6. Hand-off: API operation checklist
 
