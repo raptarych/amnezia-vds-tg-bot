@@ -71,6 +71,8 @@ RestartSec=3
 Environment="AMNEZIA_API_SECRET_FILE=${SECRET_FILE}"
 Environment="AMNEZIA_API_MANAGE_SCRIPT=/root/awg/manage_amneziawg.sh"
 Environment="AMNEZIA_API_AWG_DIR=/root/awg"
+Environment="AMNEZIA_API_LOG_LEVEL=INFO"
+Environment="AMNEZIA_API_LOG_FILE=/var/log/amnezia-vds-api.log"
 
 [Install]
 WantedBy=multi-user.target

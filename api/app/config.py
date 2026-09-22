@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     #: Directory where per-key configuration files are stored.
     awg_dir: str = "/root/awg"
 
+    #: Root logging level (DEBUG, INFO, WARNING, ERROR).
+    log_level: str = "INFO"
+
+    #: Optional path to a rotating log file. Empty string disables file logging.
+    log_file: str = "/var/log/amnezia_api"
+
     model_config = SettingsConfigDict(
         env_prefix="AMNEZIA_API_", env_file=".env", extra="ignore"
     )

@@ -8,6 +8,7 @@ from fastapi.responses import Response
 from ..config import get_settings
 from ..deps import require_secret
 from ..files import resolve_key_file, validate_key_name
+from ..logging_setup import api_logger
 from ..runner import ScriptError, run_manage
 from ..schemas import KeyDeleted, KeyGenerated, StatsResponse
 from ..stats import parse_stats
@@ -45,14 +46,17 @@ def generate_key(
     try:
         safe_name = validate_key_name(name)
     except ValueError as exc:
+        api_logger.warning("Rejected generate request, invalid key name: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     settings = get_settings()
     try:
         run_manage(settings.manage_script, "add", safe_name)
     except ScriptError as exc:
+        api_logger.error("Failed to generate key %r: %s", safe_name, exc)
         raise HTTPException(status_code=502, detail=f"add failed: {exc}") from exc
 
+    api_logger.info("Generated key %r", safe_name)
     return KeyGenerated(name=safe_name, message="Key generated successfully.")
 
 
@@ -79,16 +83,20 @@ def get_key(
     try:
         safe_name = validate_key_name(key_name)
     except ValueError as exc:
+        api_logger.warning("Rejected download request, invalid key name: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     try:
         path = resolve_key_file(settings.awg_path, safe_name, ext)
     except ValueError as exc:
+        api_logger.warning("Rejected download request for %r: %s", safe_name, exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
+        api_logger.info("Key file not found for %r (%s)", safe_name, ext)
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     data = path.read_bytes()
+    api_logger.info("Downloaded key file %r (%s, %d bytes)", safe_name, ext, len(data))
     return Response(
         content=data,
         media_type=_mime_type(path.suffix.lstrip(".")),
@@ -107,14 +115,17 @@ def delete_key(key_name: str) -> KeyDeleted:
     try:
         safe_name = validate_key_name(key_name)
     except ValueError as exc:
+        api_logger.warning("Rejected delete request, invalid key name: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     settings = get_settings()
     try:
         run_manage(settings.manage_script, "remove", safe_name)
     except ScriptError as exc:
+        api_logger.error("Failed to delete key %r: %s", safe_name, exc)
         raise HTTPException(status_code=502, detail=f"remove failed: {exc}") from exc
 
+    api_logger.info("Deleted key %r", safe_name)
     return KeyDeleted(name=safe_name, message="Key deleted successfully.")
 
 
@@ -131,6 +142,9 @@ def list_keys() -> StatsResponse:
     try:
         result = run_manage(settings.manage_script, "stats")
     except ScriptError as exc:
+        api_logger.error("Failed to list keys: %s", exc)
         raise HTTPException(status_code=502, detail=f"stats failed: {exc}") from exc
 
-    return parse_stats(result.stdout)
+    stats = parse_stats(result.stdout)
+    api_logger.info("Listed %d key(s)", len(stats.peers))
+    return stats

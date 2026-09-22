@@ -12,6 +12,8 @@ import subprocess
 import sys
 from dataclasses import dataclass
 
+from .logging_setup import runner_logger
+
 
 class ScriptError(RuntimeError):
     """Raised when the management script finishes with a non-zero exit code."""
@@ -53,6 +55,7 @@ def run_manage(script: str, *args: str, timeout: int = 120) -> CommandResult:
     Raises:
         ScriptError: If the script exited with a non-zero code.
     """
+    runner_logger.info("Executing management command: %s %s", script, " ".join(args))
     try:
         command: list[str] = [script, *args]
         if os.name == "nt":
@@ -72,12 +75,24 @@ def run_manage(script: str, *args: str, timeout: int = 120) -> CommandResult:
     except subprocess.TimeoutExpired as exc:
         stdout = exc.stdout.decode("utf-8", errors="replace") if exc.stdout else ""
         stderr = exc.stderr.decode("utf-8", errors="replace") if exc.stderr else ""
+        runner_logger.error(
+            "Management command timed out after %ss: %s",
+            timeout,
+            " ".join(args),
+        )
         raise ScriptError(-1, stderr, stdout) from exc
 
     stdout = proc.stdout.decode("utf-8", errors="replace")
     stderr = proc.stderr.decode("utf-8", errors="replace")
 
     if proc.returncode != 0:
+        runner_logger.error(
+            "Management command failed (exit=%s): %s stderr=%r",
+            proc.returncode,
+            " ".join(args),
+            stderr[-500:],
+        )
         raise ScriptError(proc.returncode, stderr, stdout)
 
+    runner_logger.info("Management command succeeded: %s", " ".join(args))
     return CommandResult(proc.returncode, stdout, stderr)

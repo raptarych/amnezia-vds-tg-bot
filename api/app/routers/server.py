@@ -7,6 +7,7 @@ from fastapi.responses import Response
 
 from ..config import get_settings
 from ..deps import require_secret
+from ..logging_setup import api_logger
 from ..runner import ScriptError, run_manage
 from ..schemas import ErrorResponse
 
@@ -20,10 +21,12 @@ def _run_server_command(script: str, command: str) -> Response:
     try:
         run_manage(script, command)
     except ScriptError as exc:
+        api_logger.error("Server command %r failed: %s", command, exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"{command} failed: {exc}",
         ) from exc
+    api_logger.info("Server command %r completed successfully", command)
     return Response(status_code=status.HTTP_200_OK, content=b"")
 
 
