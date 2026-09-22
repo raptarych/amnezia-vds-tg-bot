@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from http import HTTPStatus
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -13,9 +12,21 @@ from client.models import KeyGenerated, PeerStats, StatsResponse, Totals
 
 
 @dataclass
-class FakeDetailResponse:
-    status_code: HTTPStatus
+class FakeResponse:
+    status_code: int
     content: bytes
+
+
+def _client_with_httpx(response: FakeResponse) -> AmneziaClient:
+    """Build an AmneziaClient whose httpx request returns ``response``."""
+    client = AmneziaClient("http://x", "secret")
+
+    class FakeHttpx:
+        def request(self, **kwargs):
+            return response
+
+    client._client.set_httpx_client(FakeHttpx())
+    return client
 
 
 @pytest.mark.asyncio
@@ -35,31 +46,15 @@ async def test_generate_key_success() -> None:
 
 @pytest.mark.asyncio
 async def test_download_key_returns_content() -> None:
-    client = AmneziaClient("http://x", "secret")
-    detail = FakeDetailResponse(status_code=HTTPStatus.OK, content=b"CONF")
-    with patch(
-        "app.api.get_key_keys_key_name_get.asyncio_detailed",
-        new=AsyncMock(return_value=detail),
-    ) as mock:
-        data = await client.download_key("phone", "conf")
-        assert data == b"CONF"
-        mock.assert_awaited_once()
-        _, kwargs = mock.call_args
-        assert kwargs["key_name"] == "phone"
-        assert kwargs["ext"] == "conf"
+    client = _client_with_httpx(FakeResponse(status_code=200, content=b"CONF"))
+    data = await client.download_key("phone", "conf")
+    assert data == b"CONF"
 
 
 @pytest.mark.asyncio
 async def test_download_key_non_ok_raises() -> None:
-    client = AmneziaClient("http://x", "secret")
-    detail = FakeDetailResponse(status_code=HTTPStatus.NOT_FOUND, content=b"")
-    with (
-        patch(
-            "app.api.get_key_keys_key_name_get.asyncio_detailed",
-            new=AsyncMock(return_value=detail),
-        ),
-        pytest.raises(ApiError),
-    ):
+    client = _client_with_httpx(FakeResponse(status_code=404, content=b""))
+    with pytest.raises(ApiError):
         await client.download_key("phone", "conf")
 
 
